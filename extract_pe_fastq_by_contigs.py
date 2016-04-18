@@ -18,46 +18,10 @@
 
 
 import sys
+import subprocess
 import os
 import argparse
-from utils.Fasta import parse_fasta
-from utils.SAM import SamParser
 from utils.Fastq import parse_fastq
-
-
-def get_interest_contig_headers(input_contigs):
-    """
-    :param input_contigs: input contigs file in fasta format
-    :return: a set of contig headers
-    """
-    headers = []
-
-    contigs = parse_fasta(input_contigs)
-    for contig in contigs:
-        headers.append(contig.header)
-
-    return set(headers)
-
-
-def get_fastq_headers(input_sam, contig_header_set):
-    """
-    :param input_sam: input sam file contains read alignments to contigs
-    :param contig_header_set: interested contigs to subset
-    :return:  a set of fastq headers, which aligned to interested contigs
-
-    FCC57ARACXX:1:1310:12325:8819#	99	Contig_31	6976	42	100M	=	7044	168	CATTGTTGCCAAGAGGTCCTAGTCCCTGAC
-    CGCGGATCCTCACTGTTGCCGTCGAACTTGGATTACCTGTGGTGGTGATTTGTAAACCAGGCACTCTTCC	_bbeeeeegegfgiii_fghffdedgddfhfiifhaf`cgifhhiiifhihggcacdccd`b
-    bbcccbb]`^[^a\W___ccccYab[Wa^aaabX_b]_	AS:i:0	XN:i:0	XM:i:0	XO:i:0	XG:i:0	NM:i:0	MD:Z:100	YS:i:0	YT:Z:CP
-
-    """
-    headers = []
-
-    sam_records = SamParser(input_sam)
-    for sam in sam_records:
-        if sam.rname in contig_header_set:
-            headers.append(sam.rname)
-
-    return set(headers)
 
 
 def write_fastq_records(input_fwd_fastq, input_rev_fastq, fastq_header_set, prefix):
@@ -80,34 +44,48 @@ def write_fastq_records(input_fwd_fastq, input_rev_fastq, fastq_header_set, pref
         with open(output_file, "w") as oh:
             fastq_records = parse_fastq(fastq_file)
             for record in fastq_records:
-                if record.header.rstrip("/1").rstrip("/2") in fastq_header_set:
+                name = record.header.rstrip("/1").rstrip("/2")
+                #print name
+                if name in fastq_header_set:
                     oh.write(str(record))
 
 
+def get_fastq_headers(input_bam, input_contigs):
+    """
+    :param input_bam:     input bam file contains read alignment to contigs
+    :param input_contigs: a subset of interested contigs
+    :param prefix: output prefix
+    :return:  a set of fastq headers
+    """
+    fastq_headers = []
+
+    p = subprocess.Popen(["bash", "slice_bam_by_contigs.sh", input_bam, input_contigs],
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+
+    for header in stdout.split("\n"):
+        fastq_headers.append(header.strip())
+
+    return set(fastq_headers)
 
 
 def main():
 
     # parse arguments
     parser = argparse.ArgumentParser(description="replace spaces in fasta header by underscores")
-    parser.add_argument("input_sam", help="input sam file contains read alignments to contigs")
+    parser.add_argument("input_bam", help="input bam file contains read alignments to contigs")
     parser.add_argument("interest_contigs", help="a subset of interested contigs in fasta format to fish the raw reads")
     parser.add_argument("fwd_fastq", help="the forward fastq reads")
     parser.add_argument("rev_fastq", help="the reverse fastq reads")
     parser.add_argument("-p", "--prefix", required=False, default="extracted_", help="the output prefix of extracted fastq files")
 
     args = parser.parse_args()
-    input_sam = args.input_sam
-    input_contigs = args.interest_contigs
-    fwd_fastq = args.fwd_fastq
-    rev_fastq = args.rev_fastq
-    prefix = args.prefix
 
-    print input_sam, input_contigs, fwd_fastq, rev_fastq, prefix
+    # get headers
+    fastq_header_set = get_fastq_headers(args.input_bam, args.interest_contigs)
 
-    contig_header_set = get_interest_contig_headers(input_contigs)
-    fastq_header_set = get_fastq_headers(input_sam, contig_header_set)
-    write_fastq_records(fwd_fastq, rev_fastq, fastq_header_set, prefix)
+    # write fastq for given headers
+    write_fastq_records(args.fwd_fastq, args.rev_fastq, fastq_header_set, args.prefix)
 
 
 
