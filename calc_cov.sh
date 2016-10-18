@@ -5,8 +5,8 @@
 # Software and function
 # ---------
 java=/home/hou/Software/java/java-8-openjdk-amd64/bin/java
-bwa="/home/hou/Software/bwa/bwa"
-samtools="/home/hou/Software/samtools/samtools"
+bwa="/home/hou/Software/Module_Alignment/bwa/bwa"
+samtools="/home/hou/Software/Module_NGS_tools/samtools/samtools"
 
 
 function bwa_align_paired_reads {
